@@ -45,6 +45,8 @@ fi
 
 cat >"/var/lib/vz/snippets/${name}-user.yaml" <<EOF
 #cloud-config
+hostname: ${name}
+preserve_hostname: false
 users:
   - default
   - name: ${vm_user}
