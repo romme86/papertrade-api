@@ -40,7 +40,7 @@ ufw --force enable
 cat <<EOF
 Bootstrap complete. Next, as ${vm_user}:
   1. sudo tailscale up --hostname=papertrade-api
-  2. git clone git@github.com:romme86/papertrade-api.git ~/papertrade-api   (read-only deploy key)
+  2. git clone https://github.com/romme86/papertrade-api.git ~/papertrade-api
   3. cd ~/papertrade-api && cp .env.example .env && chmod 600 .env
   4. docker compose --env-file ~/papertrade-api/.env build
   5. docker compose --env-file ~/papertrade-api/.env run --rm papertrade-api node dist/keygen.js

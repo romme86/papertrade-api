@@ -5,6 +5,7 @@ import { DEPLOYMENT } from "../src/protocol/deployment.js";
 import { computeIntentId, deadlineFrom, intentDigest, signIntent } from "../src/protocol/signing.js";
 import { INTENT_TYPES, cancellationDomain, exchangeDomain } from "../src/protocol/typedData.js";
 
+// Anvil's well-known public test key #1; never funded.
 const sessionKey = privateKeyToAccount("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");
 const user = "0xabcdef0123456789abcdef0123456789abcdef01" as const;
 const domain = exchangeDomain(DEPLOYMENT.chainId, DEPLOYMENT.contracts.exchange);
