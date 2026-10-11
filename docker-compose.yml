@@ -1,0 +1,27 @@
+# Always run with an explicit env file, e.g.
+#   docker compose --env-file /home/papertrade/papertrade-api/.env up -d --build
+services:
+  papertrade-api:
+    build: .
+    image: papertrade-api:local
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      HOST: 0.0.0.0
+      PORT: "8787"
+    volumes:
+      - papertrade-data:/data
+    # Bind to the VM's Tailscale IP (BIND_ADDRESS) so only the tailnet can
+    # reach it. Docker-published ports bypass ufw, so never bind 0.0.0.0.
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${HOST_PORT:-8787}:8787"
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+volumes:
+  papertrade-data:
