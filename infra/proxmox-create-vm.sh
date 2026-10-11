@@ -13,7 +13,9 @@ fi
 vmid="${VMID:-102}"
 name="${VM_NAME:-papertrade-api}"
 cores="${VM_CORES:-2}"
-memory_mb="${VM_MEMORY_MB:-2048}"
+memory_mb="${VM_MEMORY_MB:-1024}"
+# Balloon floor: lets Proxmox reclaim idle guest memory on the busy Geekom host.
+balloon_mb="${VM_BALLOON_MB:-512}"
 disk_size="${VM_DISK_SIZE:-20G}"
 bridge="${PROXMOX_BRIDGE:-vmbr0}"
 vm_storage="${PROXMOX_VM_STORAGE:-local-lvm}"
@@ -31,7 +33,8 @@ if [[ ! -f "${ssh_public_key_file}" ]]; then
   echo "Missing SSH public key file: ${ssh_public_key_file}" >&2
   exit 2
 fi
-ssh_public_key="$(<"${ssh_public_key_file}")"
+# One authorized key per non-empty line of the key file.
+ssh_keys_yaml="$(sed -e '/^[[:space:]]*$/d' -e 's/^/      - /' "${ssh_public_key_file}")"
 
 pvesm set "${local_storage}" --content iso,vztmpl,backup,import,snippets
 install -d -m 755 /var/lib/vz/template/iso /var/lib/vz/snippets
@@ -51,7 +54,7 @@ users:
     sudo: ALL=(ALL) NOPASSWD:ALL
     lock_passwd: true
     ssh_authorized_keys:
-      - ${ssh_public_key}
+${ssh_keys_yaml}
 package_update: true
 packages: [ca-certificates, curl, git, gnupg, openssh-server, qemu-guest-agent, ufw]
 runcmd:
@@ -63,6 +66,7 @@ EOF
 qm create "${vmid}" \
   --name "${name}" \
   --memory "${memory_mb}" \
+  --balloon "${balloon_mb}" \
   --cores "${cores}" \
   --cpu host \
   --machine q35 \
@@ -84,7 +88,7 @@ qm resize "${vmid}" scsi0 "${disk_size}"
 qm start "${vmid}"
 
 cat <<EOF
-Created ${name} (VMID ${vmid}): ${cores} vCPU, ${memory_mb} MB, ${disk_size}.
+Created ${name} (VMID ${vmid}): ${cores} vCPU, ${memory_mb} MB (balloon min ${balloon_mb} MB), ${disk_size}.
 Wait for cloud-init, then:
   qm agent ${vmid} ping
   qm guest cmd ${vmid} network-get-interfaces

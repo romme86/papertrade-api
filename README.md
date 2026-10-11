@@ -105,7 +105,7 @@ npm run dev         # needs a .env with at least WALLET_PRIVATE_KEY and API_TOKE
 
 ## Deployment (Geekom Proxmox, dedicated VM)
 
-1. On the Proxmox host: `sudo ./infra/proxmox-create-vm.sh` (VMID 102, 2 vCPU, 2 GB, 20 GB).
+1. On the Proxmox host: `sudo ./infra/proxmox-create-vm.sh` (VMID 102, 2 vCPU, 1 GB with a 512 MB balloon floor, 20 GB).
 2. On the VM: `sudo ./infra/vm-bootstrap.sh`, then follow its printed steps.
 3. Updates: push to `main`, then on the VM:
 
