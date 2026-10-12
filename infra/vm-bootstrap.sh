@@ -27,23 +27,30 @@ fi
 usermod -aG docker "${vm_user}"
 systemctl enable --now docker qemu-guest-agent
 
-if ! command -v tailscale >/dev/null 2>&1; then
-  curl -fsSL https://tailscale.com/install.sh | sh
+# WITH_TAILSCALE=false when the API is reached over the home LAN instead
+# (then restrict the port with ./infra/lan-allowlist.sh).
+if [[ "${WITH_TAILSCALE:-true}" == "true" ]]; then
+  if ! command -v tailscale >/dev/null 2>&1; then
+    curl -fsSL https://tailscale.com/install.sh | sh
+  fi
+  systemctl enable --now tailscaled
 fi
-systemctl enable --now tailscaled
 
-# Only SSH is opened in ufw. The API is published by Docker on the
-# Tailscale IP only (BIND_ADDRESS), because Docker bypasses ufw.
+# Only SSH is opened in ufw. The API is published by Docker on BIND_ADDRESS
+# only (the Tailscale IP, or the LAN IP plus lan-allowlist.sh), because Docker
+# bypasses ufw.
 ufw allow OpenSSH
 ufw --force enable
 
 cat <<EOF
 Bootstrap complete. Next, as ${vm_user}:
-  1. sudo tailscale up --hostname=papertrade-api
+  1. Tailscale: sudo tailscale up --hostname=papertrade-api
+     LAN instead: BIND_ADDRESS=<this VM's LAN IP> in step 5, then
+     sudo ALLOW_FROM=<caller's LAN IP> ./infra/lan-allowlist.sh install
   2. git clone https://github.com/romme86/papertrade-api.git ~/papertrade-api
   3. cd ~/papertrade-api && cp .env.example .env && chmod 600 .env
   4. docker compose --env-file ~/papertrade-api/.env build
   5. docker compose --env-file ~/papertrade-api/.env run --rm papertrade-api node dist/keygen.js
-     -> paste WALLET_PRIVATE_KEY and API_TOKEN into .env, set BIND_ADDRESS to \$(tailscale ip -4)
+     -> paste WALLET_PRIVATE_KEY and API_TOKEN into .env, set BIND_ADDRESS to \$(tailscale ip -4) or the LAN IP
   6. docker compose --env-file ~/papertrade-api/.env up -d
 EOF

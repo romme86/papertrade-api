@@ -107,6 +107,11 @@ npm run dev         # needs a .env with at least WALLET_PRIVATE_KEY and API_TOKE
 
 1. On the Proxmox host: `sudo ./infra/proxmox-create-vm.sh` (VMID 102, 2 vCPU, 1 GB with a 512 MB balloon floor, 20 GB).
 2. On the VM: `sudo ./infra/vm-bootstrap.sh`, then follow its printed steps.
+   Reached over the home LAN instead of Tailscale: run the bootstrap with
+   `WITH_TAILSCALE=false`, set `BIND_ADDRESS` to the VM's LAN IP and allow only
+   the caller: `sudo ALLOW_FROM=<caller LAN IP> ./infra/lan-allowlist.sh install`
+   (Docker bypasses ufw, so the rule lives in Docker's `DOCKER-USER` chain).
+   Reserve both VMs' IPs in the router's DHCP so they cannot change.
 3. Updates: push to `main`, then on the VM:
 
 ```bash
