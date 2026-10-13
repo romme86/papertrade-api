@@ -112,6 +112,11 @@ npm run dev         # needs a .env with at least WALLET_PRIVATE_KEY and API_TOKE
    the caller: `sudo ALLOW_FROM=<caller LAN IP> ./infra/lan-allowlist.sh install`
    (Docker bypasses ufw, so the rule lives in Docker's `DOCKER-USER` chain).
    Reserve both VMs' IPs in the router's DHCP so they cannot change.
+   Both VMs on the same Proxmox host (the current setup): give each a second NIC on
+   an isolated bridge with no uplink (`vmbr1`, 10.20.0.0/24, static addresses in
+   `/etc/systemd/network/60-private-link.network`), bind to the papertrade VM's
+   10.20.0.2 and run the allowlist with `ALLOW_FROM=10.20.0.1`. Nothing on the LAN
+   can reach the API, and no router setting is involved.
 3. Updates: push to `main`, then on the VM:
 
 ```bash
