@@ -1,6 +1,11 @@
+import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { privateKeyToAccount } from "viem/accounts";
 import { createApp } from "./api/app.js";
+import { createBinanceFutures } from "./candles/binance.js";
+import { createHyperliquidCandles } from "./candles/hyperliquid.js";
+import { createCandleStore } from "./candles/store.js";
+import { createCandleSync } from "./candles/sync.js";
 import { createBuildIdProvider } from "./clients/buildId.js";
 import { createHyperEvm } from "./clients/hyperevm.js";
 import { createHyperliquidInfo } from "./clients/hyperliquid.js";
@@ -11,7 +16,7 @@ import { createWalletStream } from "./clients/walletStream.js";
 import { loadConfig } from "./config.js";
 import { createLogger } from "./lib/logger.js";
 import { createMutex } from "./lib/mutex.js";
-import { DEPLOYMENT } from "./protocol/deployment.js";
+import { DEPLOYMENT, marketSymbols } from "./protocol/deployment.js";
 import { cancellationDomain, exchangeDomain, paperStakingDomain } from "./protocol/typedData.js";
 import { openAuditLog } from "./state/audit.js";
 import { createNonceAllocator } from "./state/nonces.js";
@@ -90,7 +95,20 @@ const main = async () => {
     writeLock,
   });
 
+  const candleStore = createCandleStore(join(config.dataDir, "candles"));
+  const candleSync = config.candles.sync
+    ? createCandleSync({
+        store: candleStore,
+        binance: createBinanceFutures({ restUrl: config.candles.binanceRestUrl, archiveUrl: config.candles.binanceArchiveUrl }),
+        hyperliquid: createHyperliquidCandles(config.hyperliquidInfoUrl),
+        coins: marketSymbols,
+        backfillDays: config.candles.backfillDays,
+        logger: logger.child({ component: "candles" }),
+      })
+    : null;
+
   stream.start();
+  candleSync?.start(config.candles.pollMs);
 
   if (config.liveTrading && config.autoRenewSession) {
     const renew = () => session.maybeRenew().catch((error: Error) => logger.error("session renewal failed", { error }));
@@ -99,13 +117,15 @@ const main = async () => {
     setInterval(renew, RENEW_CHECK_INTERVAL_MS).unref();
   }
 
-  const app = createApp({ config, wallet, query, stream, hyperliquid, hyperevm, session, executor, paper, store, logger });
+  const candles = { store: candleStore, sync: candleSync };
+  const app = createApp({ config, wallet, query, stream, hyperliquid, hyperevm, session, executor, paper, store, candles, logger });
   const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port });
   logger.info("listening", { host: config.host, port: config.port, mode: config.liveTrading ? "live" : "dry-run", wallet: wallet.address });
 
   const shutdown = () => {
     logger.info("shutting down");
     stream.stop();
+    candleSync?.stop();
     server.close();
     setTimeout(() => process.exit(0), 2_000).unref();
   };

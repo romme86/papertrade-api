@@ -81,6 +81,10 @@ strings (preferred) or numbers; responses carry raw 18-decimal values as strings
 | POST | `/v1/paper/stake` | `{amount?: "all" \| "<PAPER>", dryRun?}` (Papertrade minimum 1,000 PAPER per stake) |
 | POST | `/v1/paper/unstake` | `{amount?: "all" \| "<PAPER>", dryRun?}` (instant, no lockup) |
 | POST | `/v1/paper/claim` | `{dryRun?}` moves claimable USDC rewards into the trading balance |
+| GET | `/v1/candles` | Stored 1-minute history per source and coin, and sync status |
+| GET | `/v1/candles/:source/:coin` | `?from=&to=` (epoch ms or ISO) minute columns, at most 7 days per call |
+| GET | `/v1/candles/:source/:coin/days/:day` | One stored UTC day (`YYYY-MM-DD` or day number) as raw float64 bytes |
+| GET | `/v1/funding-rates/:coin` | `?from=&to=` Binance perp funding settlements |
 
 Example (dry-run, or live when `LIVE_TRADING=true`):
 
@@ -92,6 +96,40 @@ curl -s -H "Authorization: Bearer $API_TOKEN" -H 'content-type: application/json
 
 Live opens return `202` with `submission.intentId`; poll `/v1/intents/:id` or
 `/v1/positions`. Guard failures return `422` with `error.violations[]`.
+
+## Historical 1-minute candles
+
+A background sync keeps 1-minute BTC and ETH candles from two sources in the
+data volume:
+
+| Source | What | History |
+| --- | --- | --- |
+| `binance` | USDⓈ-M `BTCUSDT` / `ETHUSDT` perps, the candles Cassandrina's backtests and the weekend-fade feed use | Backfilled `CANDLE_BACKFILL_DAYS` (766 = 2 years + 36 days of look-back) on first start. Past months come from the public monthly archives on `data.binance.vision` and the current month from the REST API. Funding is stored as well. |
+| `hyperliquid` | Hyperliquid perp candles. Papertrade fills at Hyperliquid's mid, so these are the execution reference. | HL keeps only about the newest 5000 minutes (~3.5 days), so this history starts about 3.5 days before the first sync and grows from there. |
+
+Both are topped up every `CANDLE_POLL_SECONDS` and funding every hour. Nothing
+is ever pruned. The store adds about 50 MB a year per source for both coins.
+
+Storage uses the same layout as Cassandrina's backtest day blocks:
+`/data/candles/<source>/<coin>/<utcDay>.f64` is 1440 minutes ×
+`[open, high, low, close, volume, takerBuy]` as float64 little-endian
+(minute-major, `NaN` = no candle; Hyperliquid has no `takerBuy`). The
+`index.json` next to the blocks records each day's synced and filled minutes.
+`/v1/candles/:source/:coin/days/:day` serves a block byte for byte. The
+`X-Synced-Minutes` / `X-Filled-Minutes` headers tell a partial day apart from a
+complete one.
+
+```bash
+# columns for one hour; null = no candle (or not synced yet)
+curl -s -H "Authorization: Bearer $API_TOKEN" \
+  "http://papertrade-api:8787/v1/candles/binance/BTC?from=2026-10-14T12:00:00Z&to=2026-10-14T13:00:00Z"
+```
+
+The column response has `from`, `to`, `length`, `syncedThrough` and
+`columns.{open,high,low,close,volume,takerBuy}`. Ranges longer than 7 days come
+back `truncated: true`; continue with `from` = the returned `to`. Archive months
+are streamed (download → inflate → parse → day blocks), so the backfill fits
+inside the container's 256 MB limit.
 
 ## Going live (operator checklist)
 
@@ -135,7 +173,8 @@ cd ~/papertrade-api && git pull --ff-only && docker compose --env-file /home/pap
 ```
 
 Always pass `--env-file` explicitly. Back up the `papertrade-data` volume:
-it holds the session key, nonce counters and audit log.
+it holds the session key, nonce counters and audit log. Losing its `candles/`
+folder only costs a re-sync, except for Hyperliquid minutes older than ~3.5 days.
 
 ## Known unknowns
 

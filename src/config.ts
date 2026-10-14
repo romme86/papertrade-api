@@ -32,6 +32,13 @@ const ConfigSchema = z.object({
   MAX_TOTAL_MARGIN_USD: positive(300),
   DAILY_LOSS_LIMIT_USD: positive(50),
   SNAPSHOT_MAX_AGE_MS: z.coerce.number().int().positive().default(30_000),
+
+  CANDLE_SYNC: flag("true"),
+  // Cassandrina's 2-year backtest: 730 days + 30-day look-back + 6-day warm-up.
+  CANDLE_BACKFILL_DAYS: z.coerce.number().int().nonnegative().default(766),
+  CANDLE_POLL_SECONDS: positive(60),
+  BINANCE_FAPI_URL: z.url().default("https://fapi.binance.com/fapi/v1"),
+  BINANCE_ARCHIVE_URL: z.url().default("https://data.binance.vision/data/futures/um/monthly/klines"),
 });
 
 export type Config = {
@@ -50,6 +57,15 @@ export type Config = {
   sessionRenewBeforeMs: number;
   limits: RiskLimits;
   snapshotMaxAgeMs: number;
+  candles: CandleConfig;
+};
+
+export type CandleConfig = {
+  sync: boolean;
+  backfillDays: number;
+  pollMs: number;
+  binanceRestUrl: string;
+  binanceArchiveUrl: string;
 };
 
 export type RiskLimits = {
@@ -84,5 +100,12 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): Config => {
       dailyLossLimitUsd: parsed.DAILY_LOSS_LIMIT_USD,
     },
     snapshotMaxAgeMs: parsed.SNAPSHOT_MAX_AGE_MS,
+    candles: {
+      sync: parsed.CANDLE_SYNC,
+      backfillDays: parsed.CANDLE_BACKFILL_DAYS,
+      pollMs: parsed.CANDLE_POLL_SECONDS * 1000,
+      binanceRestUrl: parsed.BINANCE_FAPI_URL.replace(/\/$/, ""),
+      binanceArchiveUrl: parsed.BINANCE_ARCHIVE_URL.replace(/\/$/, ""),
+    },
   };
 };

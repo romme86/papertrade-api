@@ -1,4 +1,6 @@
 import type { PrivateKeyAccount } from "viem/accounts";
+import type { CandleStore } from "../candles/store.js";
+import type { CandleSync } from "../candles/sync.js";
 import type { HyperEvm } from "../clients/hyperevm.js";
 import type { HyperliquidInfo } from "../clients/hyperliquid.js";
 import type { PapertradeQuery } from "../clients/papertradeQuery.js";
@@ -21,6 +23,8 @@ export type AppDeps = {
   executor: Executor;
   paper: PaperDesk;
   store: StateStore;
+  // sync is null when CANDLE_SYNC=false; stored candles are still served
+  candles: { store: CandleStore; sync: Pick<CandleSync, "status"> | null };
   logger: Logger;
   now?: () => number;
 };

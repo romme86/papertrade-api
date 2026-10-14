@@ -1,5 +1,9 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../src/api/app.js";
+import { createCandleStore } from "../src/candles/store.js";
 import { silentLogger } from "../src/lib/logger.js";
 import { limits, makeHarness, NOW, walletAccount } from "./harness.js";
 
@@ -18,6 +22,7 @@ const appFor = (liveTrading: boolean) => {
     executor: h.executor,
     paper: h.paper,
     store: h.store,
+    candles: { store: createCandleStore(mkdtempSync(join(tmpdir(), "candles-"))), sync: null },
     logger: silentLogger,
     now: () => NOW,
   });

@@ -3,6 +3,7 @@ import { bearerAuth } from "./auth.js";
 import type { AppDeps } from "./deps.js";
 import { handleError } from "./errors.js";
 import { adminRoutes } from "./routes/admin.js";
+import { candleRoutes } from "./routes/candles.js";
 import { paperRoutes } from "./routes/paper.js";
 import { readRoutes } from "./routes/read.js";
 import { tradeRoutes } from "./routes/trade.js";
@@ -25,6 +26,7 @@ export const createApp = (deps: AppDeps) => {
   v1.route("/", tradeRoutes(deps));
   v1.route("/", adminRoutes(deps));
   v1.route("/", paperRoutes(deps));
+  v1.route("/", candleRoutes(deps));
   app.route("/v1", v1);
 
   app.notFound((c) => c.json({ error: { code: "not_found", message: "No such route" } }, 404));
