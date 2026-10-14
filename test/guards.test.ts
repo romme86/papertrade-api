@@ -43,6 +43,20 @@ describe("checkOpen", () => {
     expect(codes({ realizedTodayRaw: -parseUsd(50) })).toContain("limit_daily_loss");
   });
 
+  it("grows the margin caps with realised profit, never below the base", () => {
+    const funded = (realizedPnlRaw: string) =>
+      walletState(wallet, {
+        balance: usd(500),
+        funds: { reservedBalance: "0", reservedQueued: "0", availableBalance: usd(500), availableQueued: "0" },
+        lifetime: { depositedRaw: "0", withdrawnRaw: "0", realizedPnlRaw, feesPaidRaw: "0", tradedNotionalRaw: "0", paperRewardsClaimedRaw: "0" },
+      });
+    expect(codes({ wallet: funded(usd(75.31)), marginRaw: parseUsd("175.31") })).not.toContain("limit_margin");
+    const over = checkOpen(input({ wallet: funded(usd(75.31)), marginRaw: parseUsd("175.32") }));
+    expect(over.find((v) => v.code === "limit_margin")?.message).toBe("Margin exceeds the per-trade cap $175.31 (MAX_MARGIN_USD 100 + $75.31 realised profit)");
+    expect(codes({ wallet: funded(`-${usd(40)}`), marginRaw: parseUsd(100) })).not.toContain("limit_margin");
+    expect(codes({ wallet: funded(`-${usd(40)}`), marginRaw: parseUsd(101) })).toContain("limit_margin");
+  });
+
   it("blocks opens while the kill switch is engaged", () => {
     expect(codes({ killSwitchEngaged: true })).toContain("kill_switch");
   });

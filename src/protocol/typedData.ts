@@ -33,6 +33,23 @@ export const INTENT_TYPES = {
     { name: "nonce", type: "uint256" },
     { name: "deadline", type: "uint64" },
   ],
+  Stake: [
+    { name: "user", type: "address" },
+    { name: "amount", type: "uint256" },
+    { name: "nonce", type: "uint256" },
+    { name: "deadline", type: "uint64" },
+  ],
+  Unstake: [
+    { name: "user", type: "address" },
+    { name: "amount", type: "uint256" },
+    { name: "nonce", type: "uint256" },
+    { name: "deadline", type: "uint64" },
+  ],
+  Claim: [
+    { name: "user", type: "address" },
+    { name: "nonce", type: "uint256" },
+    { name: "deadline", type: "uint64" },
+  ],
   CancelIntent: [
     { name: "user", type: "address" },
     { name: "intentId", type: "bytes32" },
@@ -55,6 +72,15 @@ export const exchangeDomain = (chainId: number, exchange: Address): IntentDomain
   version: "1",
   chainId,
   verifyingContract: exchange,
+});
+
+// PAPER stake / unstake / claim intents are signed by the wallet itself (not
+// the session key) against the staking contract.
+export const paperStakingDomain = (chainId: number, paperStaking: Address): IntentDomain => ({
+  name: "PaperStaking",
+  version: "1",
+  chainId,
+  verifyingContract: paperStaking,
 });
 
 export const cancellationDomain = (chainId: number, exchange: Address): IntentDomain => ({

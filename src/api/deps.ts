@@ -7,6 +7,7 @@ import type { Config } from "../config.js";
 import type { Logger } from "../lib/logger.js";
 import type { StateStore } from "../state/store.js";
 import type { Executor } from "../trading/executor.js";
+import type { PaperDesk } from "../trading/paper.js";
 import type { SessionManager } from "../trading/session.js";
 
 export type AppDeps = {
@@ -18,6 +19,7 @@ export type AppDeps = {
   hyperevm: HyperEvm;
   session: SessionManager;
   executor: Executor;
+  paper: PaperDesk;
   store: StateStore;
   logger: Logger;
   now?: () => number;

@@ -16,6 +16,7 @@ const appFor = (liveTrading: boolean) => {
     hyperevm: { computeDepositProxy: async () => "0x1111111111111111111111111111111111111111" },
     session: h.session,
     executor: h.executor,
+    paper: h.paper,
     store: h.store,
     logger: silentLogger,
     now: () => NOW,
@@ -43,6 +44,24 @@ describe("HTTP API", () => {
     const res = await call("/v1/account");
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ balances: { availableUsd: "500" }, session: { activeKey: expect.any(String) } });
+  });
+
+  it("reports the live margin caps and PAPER rewards on /v1/account", async () => {
+    const { call } = appFor(false);
+    const body = await (await call("/v1/account")).json();
+    expect(body).toMatchObject({
+      limits: { maxMarginUsd: "100", maxTotalMarginUsd: "300", baseMaxMarginUsd: "100", realizedProfitUsd: "0" },
+      paper: { balance: "0", staked: "0", claimableUsd: "0", rewardsClaimedUsd: "0", minimumStake: "1000" },
+    });
+  });
+
+  it("refuses a live stake below Papertrade's minimum with 422", async () => {
+    const { call, h } = appFor(true);
+    const res = await call("/v1/paper/stake", { method: "POST", body: JSON.stringify({}) });
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { error: { violations: { code: string }[] } };
+    expect(body.error.violations.map((v) => v.code)).toContain("amount_invalid");
+    expect(h.calls).toEqual([]);
   });
 
   it("lists markets with live params and HL prices", async () => {

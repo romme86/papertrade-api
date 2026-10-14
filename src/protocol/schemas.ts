@@ -124,6 +124,8 @@ export const TradingStateSchema = z.object({
   tradingPaused: z.boolean(),
   minimumTradeSizeRaw: uint,
   minimumOpenNotionalRaw: uint,
+  // Staking reward accumulator (USD raw per PAPER raw, scaled by 1e27).
+  accRewardPerShareRaw: uint.optional(),
   instruments: z.array(InstrumentTupleSchema),
   intake: IntakeTupleSchema,
 });

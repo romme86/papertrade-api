@@ -8,12 +8,14 @@ import type { RiskLimits } from "../src/config.js";
 import { silentLogger } from "../src/lib/logger.js";
 import { createMutex } from "../src/lib/mutex.js";
 import { DEPLOYMENT } from "../src/protocol/deployment.js";
-import { cancellationDomain, exchangeDomain } from "../src/protocol/typedData.js";
+import { cancellationDomain, exchangeDomain, paperStakingDomain } from "../src/protocol/typedData.js";
 import { memoryAuditLog } from "../src/state/audit.js";
 import { createNonceAllocator } from "../src/state/nonces.js";
 import { createMemoryStateStore } from "../src/state/store.js";
 import { createExecutor } from "../src/trading/executor.js";
+import { createPaperDesk } from "../src/trading/paper.js";
 import { createSessionManager } from "../src/trading/session.js";
+import { createSubmitter } from "../src/trading/submit.js";
 import { tradingState, usd, walletState } from "./fixtures.js";
 
 // Anvil's well-known public test keys; never funded on Hyperliquid.
@@ -118,8 +120,24 @@ export const makeHarness = (options: { liveTrading: boolean; wallet?: WalletStat
     now: () => NOW,
   });
 
+  const paperDomain = paperStakingDomain(DEPLOYMENT.chainId, DEPLOYMENT.contracts.paperStaking);
+  const paper = createPaperDesk({
+    liveTrading: options.liveTrading,
+    snapshotMaxAgeMs: 30_000,
+    wallet: walletAccount,
+    domain: paperDomain,
+    query,
+    stream,
+    nonces: createNonceAllocator(store, DEPLOYMENT.chainId, DEPLOYMENT.contracts.paperStaking, walletAccount.address),
+    submit: createSubmitter({ relayer, audit, logger: silentLogger }),
+    writeLock,
+    now: () => NOW,
+  });
+
   return {
     calls,
+    paper,
+    paperDomain,
     auditSink,
     store,
     query,

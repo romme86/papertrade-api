@@ -7,7 +7,7 @@ import { HistoryKindSchema } from "../../protocol/schemas.js";
 import { instrumentFor } from "../../trading/markets.js";
 import type { AppDeps } from "../deps.js";
 import { NotReadyError } from "../errors.js";
-import { accountView, instrumentView, positionView } from "../views.js";
+import { accountView, instrumentView, limitsView, positionView } from "../views.js";
 
 const HistoryQuery = z.object({ cursor: z.string().min(1).max(2048).optional() });
 
@@ -42,7 +42,13 @@ export const readRoutes = (deps: AppDeps) => {
     });
   });
 
-  app.get("/account", (c) => json(c, accountView(walletOrThrow(), deps.session.status(), snapshotAge())));
+  app.get("/account", async (c) => {
+    const state = walletOrThrow();
+    const trading = await deps.query.tradingState().catch(() => null);
+    return json(c, accountView(state, deps.session.status(), snapshotAge(), deps.config.limits, trading));
+  });
+
+  app.get("/limits", (c) => json(c, limitsView(deps.config.limits, deps.stream.state())));
 
   app.get("/positions", async (c) => {
     const state = walletOrThrow();

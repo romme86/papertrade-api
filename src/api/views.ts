@@ -1,9 +1,12 @@
 import type { Bbo } from "../clients/hyperliquid.js";
 import type { WalletState } from "../clients/walletState.js";
+import type { RiskLimits } from "../config.js";
 import { formatUsd, priceFromRaw, rawToNumber } from "../lib/units.js";
 import type { MarketSymbol } from "../protocol/deployment.js";
 import type { Instrument, Position, TradingState } from "../protocol/schemas.js";
+import { marginCaps } from "../trading/caps.js";
 import { symbolForInstrument } from "../trading/markets.js";
+import { claimableRewardsRaw } from "../trading/paperRewards.js";
 import { impactParams, settleClose } from "../trading/quote.js";
 import type { SessionStatus } from "../trading/session.js";
 
@@ -59,7 +62,41 @@ export const positionView = (position: Position, trading: TradingState, bbos: Pa
   };
 };
 
-export const accountView = (state: WalletState, session: SessionStatus, snapshotAgeMs: number | null) => ({
+// The caps in force right now: the configured base plus the account's realised profit.
+export const limitsView = (limits: RiskLimits, state: WalletState | null) => {
+  const caps = marginCaps(limits, state?.lifetime.realizedPnlRaw ?? null);
+  return {
+    maxMarginUsd: formatUsd(caps.perTradeRaw),
+    maxTotalMarginUsd: formatUsd(caps.totalRaw),
+    baseMaxMarginUsd: String(limits.maxMarginUsd),
+    baseMaxTotalMarginUsd: String(limits.maxTotalMarginUsd),
+    realizedProfitUsd: formatUsd(caps.profitRaw),
+    maxLeverage: limits.maxLeverage,
+    maxOpenPositions: limits.maxOpenPositions,
+    dailyLossLimitUsd: String(limits.dailyLossLimitUsd),
+  };
+};
+
+// PAPER in the wallet and staked, plus the USDC staking rewards (claimable needs
+// the protocol's reward accumulator, so it is null while that is unavailable).
+export const paperView = (state: WalletState, trading: TradingState | null) => {
+  const accumulator = trading?.accRewardPerShareRaw;
+  return {
+    balance: formatUsd(state.paper.balance),
+    staked: formatUsd(state.paper.staked),
+    claimableUsd: accumulator === undefined ? null : formatUsd(claimableRewardsRaw(state.paper, accumulator)),
+    rewardsClaimedUsd: formatUsd(state.lifetime.paperRewardsClaimedRaw),
+    minimumStake: trading ? formatUsd(trading.intake.minimumPaperStakeRaw, 2) : null,
+  };
+};
+
+export const accountView = (
+  state: WalletState,
+  session: SessionStatus,
+  snapshotAgeMs: number | null,
+  limits: RiskLimits,
+  trading: TradingState | null,
+) => ({
   address: state.address,
   accountRevision: state.accountRevision,
   indexedThroughBlock: state.indexedThroughBlock,
@@ -80,10 +117,8 @@ export const accountView = (state: WalletState, session: SessionStatus, snapshot
     feesPaidUsd: formatUsd(state.lifetime.feesPaidRaw),
     tradedNotionalUsd: formatUsd(state.lifetime.tradedNotionalRaw, 2),
   },
-  paper: {
-    balance: formatUsd(state.paper.balance),
-    staked: formatUsd(state.paper.staked),
-  },
+  paper: paperView(state, trading),
+  limits: limitsView(limits, state),
   openPositions: state.openPositions.length,
   pendingOperations: state.operations.map((op) => ({
     intentId: op.intentId,

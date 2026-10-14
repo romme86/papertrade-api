@@ -1,4 +1,4 @@
-import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
+import type { PrivateKeyAccount } from "viem/accounts";
 import type { Hex, LocalAccount } from "viem";
 import type { HyperliquidInfo } from "../clients/hyperliquid.js";
 import type { PapertradeQuery } from "../clients/papertradeQuery.js";
@@ -9,14 +9,14 @@ import type { Logger } from "../lib/logger.js";
 import type { Mutex } from "../lib/mutex.js";
 import { parseUsd, rawToNumber } from "../lib/units.js";
 import { INTENT_LIFETIME_SECONDS, MARKETS, MAX_CLOSE_BATCH, type MarketSymbol } from "../protocol/deployment.js";
-import type { IntentAction } from "../protocol/schemas.js";
-import { deadlineFrom, signIntent, type IntentMessage, type SignedIntentResult } from "../protocol/signing.js";
-import type { IntentDomain, IntentType } from "../protocol/typedData.js";
+import { deadlineFrom, previewIntent, signIntent, unsignedView, type IntentMessage } from "../protocol/signing.js";
+import type { IntentDomain } from "../protocol/typedData.js";
 import type { AuditLog } from "../state/audit.js";
-import { randomNonceStart, type NonceAllocator } from "../state/nonces.js";
+import type { NonceAllocator } from "../state/nonces.js";
 import type { StateStore } from "../state/store.js";
 import { realizedTodayRaw } from "./dailyLoss.js";
 import { checkOpen, type Violation } from "./guards.js";
+import { createSubmitter, type Submission } from "./submit.js";
 import { instrumentFor } from "./markets.js";
 import { buildQuote, impactParams, type Quote } from "./quote.js";
 import type { SessionManager } from "./session.js";
@@ -37,13 +37,7 @@ export type OpenRequest = {
 };
 
 export type WriteMode = "live" | "dry-run";
-
-export type Submission = {
-  intentId: Hex;
-  localIntentId: Hex;
-  state: string | null;
-  response: unknown;
-};
+export type { Submission };
 
 export type OpenResult = {
   mode: WriteMode;
@@ -86,12 +80,6 @@ type Deps = {
   now?: () => number;
 };
 
-// Strip v/r/s so dry-run previews never expose a usable signature.
-const unsignedView = ({ signed }: SignedIntentResult): Record<string, unknown> => {
-  const { v: _v, r: _r, s: _s, ...message } = signed;
-  return message;
-};
-
 export const createExecutor = (deps: Deps): Executor => {
   const now = deps.now ?? Date.now;
   const isLive = (dryRun?: boolean) => deps.liveTrading && dryRun !== true;
@@ -102,26 +90,9 @@ export const createExecutor = (deps: Deps): Executor => {
     return signer;
   };
 
-  // Dry-runs sign with a throwaway key and a random nonce: the encoding is
-  // exercised, but nothing produced could ever be replayed on our account.
-  const preview = (domain: IntentDomain, type: IntentType, message: IntentMessage) =>
-    signIntent(privateKeyToAccount(generatePrivateKey()), domain, type, { ...message, nonce: randomNonceStart() });
+  const preview = previewIntent;
 
-  const submit = async (action: IntentAction, result: SignedIntentResult, context: Record<string, unknown>): Promise<Submission> => {
-    await deps.audit.write({ event: "submit", action, intentId: result.intentId, signed: result.signed, ...context });
-    try {
-      const response = await deps.relayer.submit(action, result.signed);
-      const intentId = response.intentId ?? result.intentId;
-      if (response.intentId && response.intentId !== result.intentId) {
-        deps.logger.warn("relayer intent id differs from local derivation", { local: result.intentId, relayer: response.intentId });
-      }
-      await deps.audit.write({ event: "accepted", action, intentId, response });
-      return { intentId, localIntentId: result.intentId, state: response.state ?? null, response };
-    } catch (error) {
-      await deps.audit.write({ event: "rejected", action, intentId: result.intentId, error });
-      throw error;
-    }
-  };
+  const submit = createSubmitter(deps);
 
   const evaluateOpen = async (request: OpenRequest) => {
     const marginRaw = parseUsd(request.marginUsd);

@@ -1,7 +1,8 @@
 import type { RiskLimits } from "../config.js";
-import { parseUsd } from "../lib/units.js";
+import { formatUsd, parseUsd } from "../lib/units.js";
 import type { Instrument, TradingState } from "../protocol/schemas.js";
 import type { WalletState } from "../clients/walletState.js";
+import { marginCaps } from "./caps.js";
 
 export type OpenCheckInput = {
   marginRaw: bigint;
@@ -27,6 +28,8 @@ export const checkOpen = (input: OpenCheckInput): Violation[] => {
   const add = (code: string, message: string) => v.push({ code, message });
   const { instrument, trading, marginRaw, leverage, limits, wallet } = input;
   const notionalRaw = marginRaw * BigInt(leverage);
+  const caps = marginCaps(limits, wallet?.lifetime.realizedPnlRaw ?? null);
+  const plusProfit = (base: number) => `${base}${caps.profitRaw > 0n ? ` + $${formatUsd(caps.profitRaw, 2)} realised profit` : ""}`;
 
   if (input.killSwitchEngaged) add("kill_switch", "Kill switch is engaged; only closes are allowed");
   if (trading.tradingPaused) add("trading_paused", "Papertrade has paused all opens");
@@ -39,7 +42,9 @@ export const checkOpen = (input: OpenCheckInput): Violation[] => {
   if (notionalRaw < trading.minimumOpenNotionalRaw) add("notional_below_min", "Position value (margin × leverage) is below Papertrade's minimum");
   if (notionalRaw > instrument.maxPositionNotionalRaw) add("notional_above_max", "Position value exceeds the market maximum");
 
-  if (marginRaw > parseUsd(limits.maxMarginUsd)) add("limit_margin", `Margin exceeds MAX_MARGIN_USD ${limits.maxMarginUsd}`);
+  if (marginRaw > caps.perTradeRaw) {
+    add("limit_margin", `Margin exceeds the per-trade cap $${formatUsd(caps.perTradeRaw, 2)} (MAX_MARGIN_USD ${plusProfit(limits.maxMarginUsd)})`);
+  }
   if (leverage > limits.maxLeverage) add("limit_leverage", `Leverage exceeds MAX_LEVERAGE ${limits.maxLeverage}`);
   if (input.realizedTodayRaw <= -parseUsd(limits.dailyLossLimitUsd)) add("limit_daily_loss", `Daily realized loss reached DAILY_LOSS_LIMIT_USD ${limits.dailyLossLimitUsd}`);
 
@@ -49,7 +54,9 @@ export const checkOpen = (input: OpenCheckInput): Violation[] => {
     if (input.walletAgeMs === null || input.walletAgeMs > input.snapshotMaxAgeMs) add("wallet_stale", "Wallet snapshot is stale");
     const pendingOpens = wallet.operations.filter((op) => op.action === "openPosition").length;
     if (wallet.openPositions.length + pendingOpens >= limits.maxOpenPositions) add("limit_positions", `Open + pending positions reached MAX_OPEN_POSITIONS ${limits.maxOpenPositions}`);
-    if (wallet.locked + wallet.funds.reservedBalance + marginRaw > parseUsd(limits.maxTotalMarginUsd)) add("limit_total_margin", `Total margin would exceed MAX_TOTAL_MARGIN_USD ${limits.maxTotalMarginUsd}`);
+    if (wallet.locked + wallet.funds.reservedBalance + marginRaw > caps.totalRaw) {
+      add("limit_total_margin", `Total margin would exceed $${formatUsd(caps.totalRaw, 2)} (MAX_TOTAL_MARGIN_USD ${plusProfit(limits.maxTotalMarginUsd)})`);
+    }
     if (marginRaw > wallet.funds.availableBalance) add("insufficient_funds", "Margin exceeds the available balance");
   }
 

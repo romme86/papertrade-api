@@ -36,12 +36,18 @@ about 5 bps before zero equity.
   the intent is built and signed with a *throwaway* key and random nonce, then
   returned unsigned. Nothing that could be replayed on your account is produced.
   A request can always ask for `dryRun: true`; it can never force live.
-- **Two keys.** The wallet key (in `.env`) only signs session-key registrations.
+- **Two keys.** The wallet key (in `.env`) signs session-key registrations and
+  PAPER stake / unstake / claim (Papertrade only accepts those from the wallet).
   Trades are signed by the session key (in the data volume), which Papertrade
   allows to open/close but **not withdraw**.
 - **Guards before signing**: Papertrade's own limits plus `MAX_MARGIN_USD`,
   `MAX_LEVERAGE`, `MAX_OPEN_POSITIONS`, `MAX_TOTAL_MARGIN_USD`,
   `DAILY_LOSS_LIMIT_USD`, snapshot freshness and session validity.
+- **Margin caps grow with profit**: the per-trade cap is `MAX_MARGIN_USD` plus
+  the account's lifetime realised profit, and the total cap is
+  `MAX_TOTAL_MARGIN_USD` plus the same profit. Callers can compound winnings,
+  but losses never lower the caps below the configured base.
+  `/v1/limits` (and `limits` in `/v1/account`) shows the caps in force.
 - **Kill switch** blocks opens (closes still work), persisted across restarts.
 - **Audit log** (`/data/audit.jsonl`) of every live submission and response.
 - Writes are serialised, so nonces and guard checks never interleave.
@@ -56,7 +62,8 @@ strings (preferred) or numbers; responses carry raw 18-decimal values as strings
 | --- | --- | --- |
 | GET | `/health` | Liveness, mode, snapshot age (no auth) |
 | GET | `/v1/markets` | BTC/ETH params, minimums, impact curve, OI, HL BBO |
-| GET | `/v1/account` | Balances, lifetime PnL/fees, pending intents, session |
+| GET | `/v1/account` | Balances, lifetime PnL/fees, PAPER + staking rewards, live caps, pending intents, session |
+| GET | `/v1/limits` | Margin caps in force (base + realised profit) and the other limits |
 | GET | `/v1/positions` | Open positions with entry, bust, mark, est. close PnL |
 | GET | `/v1/positions/closed` | Recently closed positions seen on the stream |
 | GET | `/v1/history/:kind` | `trades` \| `cashflows` \| `queue` \| `staking` (`?cursor=`) |
@@ -70,6 +77,10 @@ strings (preferred) or numbers; responses carry raw 18-decimal values as strings
 | GET/POST | `/v1/session`, `/v1/session/register` | Session-key status / register now |
 | GET/POST | `/v1/kill-switch` | `{engaged, reason?}` |
 | GET | `/v1/funding/deposit-address` | Where to send USDC on Hyperliquid |
+| GET | `/v1/paper` | PAPER balance / staked, claimable + claimed USDC rewards, minimum stake |
+| POST | `/v1/paper/stake` | `{amount?: "all" \| "<PAPER>", dryRun?}` (Papertrade minimum 1,000 PAPER per stake) |
+| POST | `/v1/paper/unstake` | `{amount?: "all" \| "<PAPER>", dryRun?}` (instant, no lockup) |
+| POST | `/v1/paper/claim` | `{dryRun?}` moves claimable USDC rewards into the trading balance |
 
 Example (dry-run, or live when `LIVE_TRADING=true`):
 

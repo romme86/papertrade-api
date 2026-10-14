@@ -12,12 +12,14 @@ import { loadConfig } from "./config.js";
 import { createLogger } from "./lib/logger.js";
 import { createMutex } from "./lib/mutex.js";
 import { DEPLOYMENT } from "./protocol/deployment.js";
-import { cancellationDomain, exchangeDomain } from "./protocol/typedData.js";
+import { cancellationDomain, exchangeDomain, paperStakingDomain } from "./protocol/typedData.js";
 import { openAuditLog } from "./state/audit.js";
 import { createNonceAllocator } from "./state/nonces.js";
 import { openStateStore } from "./state/store.js";
 import { createExecutor } from "./trading/executor.js";
+import { createPaperDesk } from "./trading/paper.js";
 import { createSessionManager } from "./trading/session.js";
+import { createSubmitter } from "./trading/submit.js";
 
 const USER_AGENT = "papertrade-api/0.1 (+cassandrina)";
 const RENEW_CHECK_INTERVAL_MS = 10 * 60_000;
@@ -33,6 +35,8 @@ const main = async () => {
   const audit = await openAuditLog(config.dataDir);
   const writeLock = createMutex();
   const nonces = createNonceAllocator(store, DEPLOYMENT.chainId, DEPLOYMENT.contracts.exchange, wallet.address);
+  // The frontend keys PAPER nonces by the staking contract, on their own "paper" lane.
+  const paperNonces = createNonceAllocator(store, DEPLOYMENT.chainId, DEPLOYMENT.contracts.paperStaking, wallet.address);
 
   const buildId = createBuildIdProvider({ origin: config.papertradeOrigin, fallback: config.papertradeBuildId, logger });
   const http = createPapertradeHttp({ origin: config.papertradeOrigin, buildId, userAgent: USER_AGENT });
@@ -74,6 +78,18 @@ const main = async () => {
     logger,
   });
 
+  const paper = createPaperDesk({
+    liveTrading: config.liveTrading,
+    snapshotMaxAgeMs: config.snapshotMaxAgeMs,
+    wallet,
+    domain: paperStakingDomain(DEPLOYMENT.chainId, DEPLOYMENT.contracts.paperStaking),
+    query,
+    stream,
+    nonces: paperNonces,
+    submit: createSubmitter({ relayer, audit, logger }),
+    writeLock,
+  });
+
   stream.start();
 
   if (config.liveTrading && config.autoRenewSession) {
@@ -83,7 +99,7 @@ const main = async () => {
     setInterval(renew, RENEW_CHECK_INTERVAL_MS).unref();
   }
 
-  const app = createApp({ config, wallet, query, stream, hyperliquid, hyperevm, session, executor, store, logger });
+  const app = createApp({ config, wallet, query, stream, hyperliquid, hyperevm, session, executor, paper, store, logger });
   const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port });
   logger.info("listening", { host: config.host, port: config.port, mode: config.liveTrading ? "live" : "dry-run", wallet: wallet.address });
 

@@ -1,3 +1,4 @@
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import {
   concat,
   hashTypedData,
@@ -8,6 +9,7 @@ import {
   type Hex,
   type LocalAccount,
 } from "viem";
+import { randomNonceStart } from "../state/nonces.js";
 import { INTENT_ID_TAG, INTENT_TYPES, type IntentDomain, type IntentType } from "./typedData.js";
 
 export type IntentMessage = Record<string, bigint | boolean | string | readonly bigint[]>;
@@ -87,3 +89,14 @@ export const signIntent = async (
 
 export const deadlineFrom = (nowMs: number, lifetimeSeconds: number): bigint =>
   BigInt(Math.floor(nowMs / 1000) + lifetimeSeconds);
+
+// Dry-runs sign with a throwaway key and a random nonce: the encoding is
+// exercised, but nothing produced could ever be replayed on our account.
+export const previewIntent = (domain: IntentDomain, primaryType: IntentType, message: IntentMessage): Promise<SignedIntentResult> =>
+  signIntent(privateKeyToAccount(generatePrivateKey()), domain, primaryType, { ...message, nonce: randomNonceStart() });
+
+// Strip v/r/s so previews and responses never expose a usable signature.
+export const unsignedView = ({ signed }: SignedIntentResult): Record<string, unknown> => {
+  const { v: _v, r: _r, s: _s, ...message } = signed;
+  return message;
+};
