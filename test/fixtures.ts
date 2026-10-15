@@ -1,7 +1,8 @@
 import { TradingStateSchema, WalletSnapshotSchema, type TradingState } from "../src/protocol/schemas.js";
 import type { WalletState } from "../src/clients/walletState.js";
 
-// Captured from https://exchange.papertrade.xyz/state/trading on 2026-10-11.
+// Captured from https://exchange.papertrade.xyz/state/trading on 2026-10-11; intake controls in the
+// shape Papertrade has sent since 2026-10-15.
 export const tradingStateJson = {
   schemaVersion: 1,
   indexedThroughBlock: 48246581,
@@ -13,7 +14,7 @@ export const tradingStateJson = {
     [0, "BTC", 0, "10", true, false, false, false, false, null, null, null, "15000000000000000000000", "814598000000000000000", 1000, "10000000000000000000000000", "476041580087574", "100000000000000000", "100000000000000000000000", "5208906743088206164622", "3753589637952925482802", "5392724486380858422072", "3951340761282735141435"],
     [1, "ETH", 1, "100", true, false, false, false, false, null, null, null, "15000000000000000000000", "483979000000000000000", 1000, "10000000000000000000000000", "481304050180130", "100000000000000000", "100000000000000000000000", "119678458573727979560574", "157517713170344282080799", "121019494923121211430996", "163579481848982070637824"],
   ],
-  intake: [1791685001319699, "1000000000000000000000", "120000000000000000000000000", []],
+  intakeControls: [1791673267280300, "1000000000000000000000", []],
 };
 
 export const tradingState = (): TradingState => TradingStateSchema.parse(tradingStateJson);

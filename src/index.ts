@@ -45,7 +45,7 @@ const main = async () => {
 
   const buildId = createBuildIdProvider({ origin: config.papertradeOrigin, fallback: config.papertradeBuildId, logger });
   const http = createPapertradeHttp({ origin: config.papertradeOrigin, buildId, userAgent: USER_AGENT });
-  const query = createPapertradeQuery(http);
+  const query = createPapertradeQuery(http, { logger });
   const relayer = createRelayer(http);
   const hyperliquid = createHyperliquidInfo(config.hyperliquidInfoUrl);
   const hyperevm = createHyperEvm(config.hyperevmRpcUrl);

@@ -1,4 +1,5 @@
 import type { Address } from "viem";
+import { silentLogger, type Logger } from "../lib/logger.js";
 import {
   DepositCheckSchema,
   TradingStateSchema,
@@ -20,13 +21,20 @@ export type PapertradeQuery = {
   depositAddress: (user: Address) => Promise<Address>;
 };
 
-export const createPapertradeQuery = (http: PapertradeHttp, stateCacheMs = 3_000): PapertradeQuery => {
+type Options = { stateCacheMs?: number; logger?: Logger };
+
+export const createPapertradeQuery = (http: PapertradeHttp, { stateCacheMs = 3_000, logger = silentLogger }: Options = {}): PapertradeQuery => {
   let cachedState: { value: TradingState; at: number } | null = null;
+  let intakeUnreadable = false;
 
   return {
     tradingState: async () => {
       if (cachedState && Date.now() - cachedState.at < stateCacheMs) return cachedState.value;
       const value = TradingStateSchema.parse(await http.get("/state/trading"));
+      if (value.intakeUnreadable && !intakeUnreadable) {
+        logger.warn("Papertrade intake controls unreadable; assuming every action open and no stake minimum");
+      }
+      intakeUnreadable = value.intakeUnreadable;
       cachedState = { value, at: Date.now() };
       return value;
     },

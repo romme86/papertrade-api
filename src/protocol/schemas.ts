@@ -109,26 +109,44 @@ const InstrumentTupleSchema = z
   );
 export type Instrument = z.infer<typeof InstrumentTupleSchema>;
 
-const IntakeTupleSchema = z
-  .tuple([z.number(), uint, uint, z.array(z.string())])
-  .transform(([revision, minimumPaperStakeRaw, maximumNetOpenInterestRaw, pausedActions]) => ({
-    revision,
-    minimumPaperStakeRaw,
-    maximumNetOpenInterestRaw,
-    pausedActions,
-  }));
+export type Intake = { revision: number; minimumPaperStakeRaw: bigint; pausedActions: string[] };
 
-export const TradingStateSchema = z.object({
-  schemaVersion: z.number().int(),
-  indexedThroughBlock: z.number().int(),
-  tradingPaused: z.boolean(),
-  minimumTradeSizeRaw: uint,
-  minimumOpenNotionalRaw: uint,
-  // Staking reward accumulator (USD raw per PAPER raw, scaled by 1e27).
-  accRewardPerShareRaw: uint.optional(),
-  instruments: z.array(InstrumentTupleSchema),
-  intake: IntakeTupleSchema,
-});
+// What the frontend assumes when a frame carries no intake controls: every action open, no stake minimum.
+export const DEFAULT_INTAKE: Intake = { revision: 0, minimumPaperStakeRaw: 0n, pausedActions: [] };
+
+// `intakeControls` (since 2026-10-15): [revision, minimum PAPER stake, paused actions].
+const IntakeControlsTupleSchema = z
+  .tuple([z.number(), uint, z.array(z.string())])
+  .transform(([revision, minimumPaperStakeRaw, pausedActions]): Intake => ({ revision, minimumPaperStakeRaw, pausedActions }));
+
+// `intake` (until 2026-10-15) also carried the maximum net open interest.
+const LegacyIntakeTupleSchema = z
+  .tuple([z.number(), uint, uint, z.array(z.string())])
+  .transform(([revision, minimumPaperStakeRaw, , pausedActions]): Intake => ({ revision, minimumPaperStakeRaw, pausedActions }));
+
+// The intake controls are advisory: the relayer enforces pauses and the stake minimum itself.
+// Controls this service cannot read fall back to the frontend's defaults instead of failing
+// the whole frame (which would stop every read and order), flagged by intakeUnreadable.
+const readIntake = (controls: unknown, legacy: unknown): { intake: Intake; intakeUnreadable: boolean } => {
+  if (controls === undefined && legacy === undefined) return { intake: DEFAULT_INTAKE, intakeUnreadable: false };
+  const parsed = controls !== undefined ? IntakeControlsTupleSchema.safeParse(controls) : LegacyIntakeTupleSchema.safeParse(legacy);
+  return parsed.success ? { intake: parsed.data, intakeUnreadable: false } : { intake: DEFAULT_INTAKE, intakeUnreadable: true };
+};
+
+export const TradingStateSchema = z
+  .object({
+    schemaVersion: z.number().int(),
+    indexedThroughBlock: z.number().int(),
+    tradingPaused: z.boolean(),
+    minimumTradeSizeRaw: uint,
+    minimumOpenNotionalRaw: uint,
+    // Staking reward accumulator (USD raw per PAPER raw, scaled by 1e27).
+    accRewardPerShareRaw: uint.optional(),
+    instruments: z.array(InstrumentTupleSchema),
+    intakeControls: z.unknown().optional(),
+    intake: z.unknown().optional(),
+  })
+  .transform(({ intakeControls, intake, ...state }) => ({ ...state, ...readIntake(intakeControls, intake) }));
 export type TradingState = z.infer<typeof TradingStateSchema>;
 
 const PositionTupleSchema = z
